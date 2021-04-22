@@ -139,21 +139,26 @@ class IPythonParallelKernel(IPythonKernel):
             fname = getattr(f, '__name__', 'f')
 
             fname = prefix + "f"
+            fname = comm.bcast(fname)
             argname = prefix + "args"
+            argname = comm.bcast(argname)
             kwargname = prefix + "kwargs"
+            kwargname = comm.bcast(kwargname)
             resultname = prefix + "result"
+            resultname = comm.bcast(resultname)
 
             ns = {fname: f, argname: args, kwargname: kwargs, resultname: None}
             # print ns
             working.update(ns)
             code = "%s = %s(*%s,**%s)" % (resultname, fname, argname, kwargname)
             
-            test_code = comm.bcast(code if comm.Get_rank() == 0 else None)
-            self.log.info(f"test_code: {test_code}")
+            # test_code = comm.bcast(code)
+            # self.log.info(f"test_code:\n{test_code}")
+            self.log.info(f"code:\n{code}")
 
             try:
                 # SG: This is the actual code execution I believe
-                self.log.info(f"Entering exec: code: {code}")
+                self.log.info(f"Entering exec: code:\n{code}")
                 exec(code, shell.user_global_ns, shell.user_ns)
                 result = working.get(resultname)
             finally:
