@@ -38,11 +38,15 @@ class IPythonParallelKernel(IPythonKernel):
         # add apply_request, in anticipation of upstream deprecation
         self.shell_handlers['apply_request'] = self.apply_request
         # set up data pub
+        # SG: We can probably remove this
         data_pub = self.shell.data_pub = self.data_pub_class(parent=self)
         self.shell.configurables.append(data_pub)
         data_pub.session = self.session
         data_pub.pub_socket = self.iopub_socket
         self.aborted = set()
+
+        # SG: Might need to overload enter_eventloop function in the base class to be an MPI
+        # bcast
 
     def should_handle(self, stream, msg, idents):
         """Check whether a shell-channel message should be handled
@@ -97,6 +101,9 @@ class IPythonParallelKernel(IPythonKernel):
             self.log.error("Got bad msg: %s", parent, exc_info=True)
             return
 
+        # SG: Presumably, we only enter on rank 0, and then bcast the msg
+        # to all ranks
+
         md = self.init_metadata(parent)
         reply_content, result_buf = self.do_apply(content, bufs, msg_id, md)
 
@@ -119,6 +126,8 @@ class IPythonParallelKernel(IPythonKernel):
         )
 
     def do_apply(self, content, bufs, msg_id, reply_metadata):
+        from mpi4py import MPI
+        comm = MPI.COMM_WORLD
         shell = self.shell
         try:
             working = shell.user_ns
@@ -138,7 +147,13 @@ class IPythonParallelKernel(IPythonKernel):
             # print ns
             working.update(ns)
             code = "%s = %s(*%s,**%s)" % (resultname, fname, argname, kwargname)
+            
+            test_code = comm.bcast(code if comm.Get_rank() == 0 else None)
+            self.log.info(f"test_code: {test_code}")
+
             try:
+                # SG: This is the actual code execution I believe
+                self.log.info(f"Entering exec: code: {code}")
                 exec(code, shell.user_global_ns, shell.user_ns)
                 result = working.get(resultname)
             finally:
@@ -172,6 +187,8 @@ class IPythonParallelKernel(IPythonKernel):
             shell._last_traceback = None
             e_info = dict(engine_uuid=self.ident, engine_id=self.int_id, method='apply')
             reply_content['engine_info'] = e_info
+
+            # SG: Only need this on rank 0, if at all
 
             self.send_response(
                 self.iopub_socket, u'error', reply_content, ident=self._topic('error')

@@ -212,6 +212,8 @@ class EngineFactory(RegistrationFactory):
     def register(self):
         """send the registration_request"""
 
+        # Only on rank 0
+
         self.log.info("Registering with controller at %s" % self.url)
         ctx = self.context
         connect, maybe_tunnel = self.init_connector()
@@ -238,6 +240,8 @@ class EngineFactory(RegistrationFactory):
 
     def complete_registration(self, msg, connect, maybe_tunnel):
         # print msg
+        self.log.info("Inside complete_registration...")
+        self.log.info("msg: " + str(msg))
         self.loop.remove_timeout(self._abort_timeout)
         ctx = self.context
         loop = self.loop
@@ -260,6 +264,8 @@ class EngineFactory(RegistrationFactory):
                     "Did not get the requested id: %i != %i", content['id'], self.id
                 )
             self.id = content['id']
+
+            # SG: We probably don't need most of this
 
             # launch heartbeat
             # possibly forward hb ports with tunnels
@@ -317,6 +323,8 @@ class EngineFactory(RegistrationFactory):
             # disable history:
             self.config.HistoryManager.hist_file = ':memory:'
 
+            # SG: This looks like one of the places where the stdout redirection takes place
+
             # Redirect input streams and set a display hook.
             if self.out_stream_factory:
                 sys.stdout = self.out_stream_factory(
@@ -348,6 +356,8 @@ class EngineFactory(RegistrationFactory):
                 'engine.%i.displaypub' % self.id
             )
 
+            # SG: Only rank 0
+
             # periodically check the heartbeat pings of the controller
             # Should be started here and not in "start()" so that the right period can be taken
             # from the hubs HeartBeatMonitor.period
@@ -366,8 +376,11 @@ class EngineFactory(RegistrationFactory):
                 self.log.info(
                     "Monitoring of the heartbeat signal from the hub is not enabled."
                 )
+            
+            # SG: This should happen on all ranks
 
             # FIXME: This is a hack until IPKernelApp and IPEngineApp can be fully merged
+            # SG: IPKernelApp seems to use ZMQ internally as well, which could be problematic
             app = IPKernelApp(
                 parent=self, shell=self.kernel.shell, kernel=self.kernel, log=self.log
             )
@@ -401,6 +414,7 @@ class EngineFactory(RegistrationFactory):
         time.sleep(1)
         sys.exit(255)
 
+    # SG: Don't need this anymore
     def _hb_monitor(self):
         """Callback to monitor the heartbeat from the controller"""
         self._hb_listener.flush()
@@ -437,4 +451,5 @@ class EngineFactory(RegistrationFactory):
                 loop.time() + self.timeout, self.abort
             )
 
+        # SG: I think this is a one-time callback?
         self.loop.add_callback(_start)
